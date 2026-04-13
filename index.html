@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Budget" />
+  <meta name="theme-color" content="#1a1a2e" />
+  <title>Budget App</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; background: #F2F2F7; overscroll-behavior: none; }
+    input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .suggestion-chip { display:inline-block; background:#F2F2F7; border:1.5px solid #E5E5EA; border-radius:20px; padding:4px 11px; font-size:12px; font-weight:600; color:#3B82F6; cursor:pointer; margin:3px; font-family:inherit; }
+    .suggestion-chip:active { background:#EFF6FF; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const DEFAULT_CATEGORIES = {
+  ausgaben: [
+    { id:"wohnen", label:"Wohnen", icon:"🏠" },
+    { id:"lebensmittel", label:"Lebensmittel", icon:"🛒" },
+    { id:"transport", label:"Transport", icon:"🚗" },
+    { id:"restaurant", label:"Restaurant", icon:"🍽️" },
+    { id:"gesundheit", label:"Gesundheit", icon:"💊" },
+    { id:"freizeit", label:"Freizeit", icon:"🎮" },
+    { id:"kleidung", label:"Kleidung", icon:"👕" },
+    { id:"abonnements", label:"Abos", icon:"📱" },
+    { id:"sonstiges", label:"Sonstiges", icon:"📦" },
+  ],
+  einnahmen: [
+    { id:"gehalt", label:"Gehalt", icon:"💼" },
+    { id:"freelance", label:"Freelance", icon:"💻" },
+    { id:"zinsen", label:"Zinsen", icon:"📈" },
+    { id:"sonstiges_ein", label:"Sonstiges", icon:"💰" },
+  ],
+};
+
+// Vorschläge je Kategorie
+const PAYEE_SUGGESTIONS = {
+  lebensmittel: ["Lidl","Aldi","Rewe","Edeka","Penny","Kaufland","Netto","dm","Rossmann"],
+  restaurant: ["Restaurant","Café","McDonald's","Burger King","Pizzeria","Döner","Bäckerei","Sushi"],
+  transport: ["DB Bahn","MVV","BVG","Tankstelle","Shell","BP","Aral","ADAC","Uber"],
+  wohnen: ["Miete","Strom","Gas","Internet","Versicherung","GEZ","Nebenkosten","Hausmeister"],
+  gesundheit: ["Apotheke","Arzt","Zahnarzt","Krankenversicherung","Optiker","Physiotherapie"],
+  freizeit: ["Netflix","Spotify","Amazon Prime","Kino","Konzert","Fitnessstudio","Steam"],
+  kleidung: ["Zara","H&M","C&A","Zalando","About You","Nike","Adidas"],
+  abonnements: ["Netflix","Spotify","Amazon","Apple","Google","Disney+","DAZN","Magazin"],
+  sonstiges: ["Diverses","Sonstiges"],
+  gehalt: ["Arbeitgeber","Firma"],
+  freelance: ["Kunde","Auftraggeber","Honorar"],
+  zinsen: ["Bank","Sparkasse","DKB","ING"],
+  sonstiges_ein: ["Diverses"],
+};
+
+const DEFAULT_BUDGETS = { wohnen:900, lebensmittel:300, transport:150, restaurant:120, gesundheit:80, freizeit:100, kleidung:80, abonnements:50, sonstiges:60 };
+const DEFAULT_ACCOUNTS = [
+  { id:"1", name:"Girokonto", balance:2450.8, color:"#3B82F6", icon:"🏦" },
+  { id:"2", name:"Sparkonto", balance:8300.0, color:"#10B981", icon:"🐷" },
+  { id:"3", name:"Bargeld", balance:120.5, color:"#F59E0B", icon:"💵" },
+];
+const DEFAULT_TRANSACTIONS = [
+  { id:"t1", accountId:"1", type:"ausgaben", amount:45.9, category:"lebensmittel", payee:"Rewe", note:"", date:"2026-03-19" },
+  { id:"t2", accountId:"1", type:"einnahmen", amount:3200, category:"gehalt", payee:"Arbeitgeber", note:"März Gehalt", date:"2026-03-01" },
+  { id:"t3", accountId:"2", type:"einnahmen", amount:500, category:"zinsen", payee:"Bank", note:"Zinsgutschrift", date:"2026-03-15" },
+  { id:"t4", accountId:"1", type:"ausgaben", amount:12.9, category:"abonnements", payee:"Netflix", note:"", date:"2026-03-10" },
+  { id:"t5", accountId:"3", type:"ausgaben", amount:8.5, category:"restaurant", payee:"Café", note:"Kaffee & Kuchen", date:"2026-03-18" },
+];
+
+const EMOJI_LIST = ["🏠","🛒","🚗","🍽️","💊","🎮","👕","📱","📦","💼","💻","📈","💰","🎵","✈️","🏋️","🐾","🎓","🍕","☕","🛍️","💈","🎭","🏖️","🧴","💡","🔧","🎁","🍺","🚿","🏥","🚌","🚲","⚽","🎯","🧹","📚","🌱","🏦","🐷","💵","💳","🏧","💎","🎪","🍦","🧃","🪴","🎀","🧸"];
+const ACC_ICONS = ["🏦","🐷","💵","💳","🏧","💼","🎯"];
+const COLORS = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#14B8A6"];
+
+function load(k,fb){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):fb; }catch{ return fb; } }
+function save(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch{} }
+
+function App() {
+  const [accounts, setAccountsRaw] = useState(()=>load("ba_accounts",DEFAULT_ACCOUNTS));
+  const [transactions, setTransactionsRaw] = useState(()=>load("ba_transactions",DEFAULT_TRANSACTIONS));
+  const [budgets, setBudgetsRaw] = useState(()=>load("ba_budgets",DEFAULT_BUDGETS));
+  const [categories, setCategoriesRaw] = useState(()=>load("ba_categories",DEFAULT_CATEGORIES));
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [showTxModal, setShowTxModal] = useState(false);
+  const [showAccModal, setShowAccModal] = useState(false); // null=closed, 'new', or account object for edit
+  const [editingAcc, setEditingAcc] = useState(null);
+  const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [showCatModal, setShowCatModal] = useState(false);
+  const [editingBudget, setEditingBudget] = useState(null);
+  const [editingCat, setEditingCat] = useState(null);
+  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [settingsSection, setSettingsSection] = useState("ausgaben");
+  const [form, setForm] = useState({ type:"ausgaben", amount:"", category:"lebensmittel", accountId:"1", payee:"", note:"", date:new Date().toISOString().split("T")[0] });
+  const [accForm, setAccForm] = useState({ name:"", balance:"", color:"#3B82F6", icon:"🏦" });
+  const [catForm, setCatForm] = useState({ label:"", icon:"🏠" });
+  const amountRef = useRef(null);
+  const budgetRef = useRef(null);
+  const payeeRef = useRef(null);
+
+  const setAccounts = v=>{ setAccountsRaw(v); save("ba_accounts",v); };
+  const setTransactions = v=>{ setTransactionsRaw(v); save("ba_transactions",v); };
+  const setBudgets = v=>{ setBudgetsRaw(v); save("ba_budgets",v); };
+  const setCategories = v=>{ setCategoriesRaw(v); save("ba_categories",v); };
+
+  const fmt = n=>new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(n);
+  const safeT="env(safe-area-inset-top)", safeB="env(safe-area-inset-bottom)";
+  const thisMonth=new Date().toISOString().slice(0,7);
+  const monthLabel=new Date().toLocaleDateString("de-DE",{month:"long",year:"numeric"});
+  const monthTx=transactions.filter(t=>t.date.startsWith(thisMonth));
+  const monthIncome=monthTx.filter(t=>t.type==="einnahmen").reduce((s,t)=>s+t.amount,0);
+  const monthExpenses=monthTx.filter(t=>t.type==="ausgaben").reduce((s,t)=>s+t.amount,0);
+  const totalBalance=accounts.reduce((s,a)=>s+a.balance,0);
+  const savings=monthIncome-monthExpenses;
+  const savingsRate=monthIncome>0?(savings/monthIncome)*100:0;
+  const expByCat=monthTx.filter(t=>t.type==="ausgaben").reduce((acc,t)=>{ acc[t.category]=(acc[t.category]||0)+t.amount; return acc; },{});
+  const getCat=(type,id)=>(categories[type]||[]).find(c=>c.id===id)||{label:id,icon:"📦"};
+  const getAcc=id=>accounts.find(a=>a.id===id);
+
+  const getBudgetStatus=catId=>{ const spent=expByCat[catId]||0,limit=budgets[catId]; if(!limit)return null; const pct=(spent/limit)*100; return{spent,limit,pct,remaining:limit-spent}; };
+  const statusColor=pct=>pct>=100?{bar:"#EF4444",bg:"#FEE2E2",text:"#DC2626"}:pct>=80?{bar:"#F59E0B",bg:"#FEF3C7",text:"#D97706"}:{bar:"#10B981",bg:"#D1FAE5",text:"#059669"};
+
+  const overCount=(categories.ausgaben||[]).filter(c=>{ const s=getBudgetStatus(c.id); return s&&s.pct>=100; }).length;
+  const nearCount=(categories.ausgaben||[]).filter(c=>{ const s=getBudgetStatus(c.id); return s&&s.pct>=80&&s.pct<100; }).length;
+  const totalBudget=Object.values(budgets).reduce((s,v)=>s+v,0);
+  const budgetUsedPct=totalBudget>0?(monthExpenses/totalBudget)*100:0;
+  const topCats=Object.entries(expByCat).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const filteredTx=selectedAccount?transactions.filter(t=>t.accountId===selectedAccount):transactions;
+
+  // Payee suggestions: recent + category defaults, deduplicated
+  const recentPayees = [...new Set(transactions.filter(t=>t.category===form.category&&t.payee).map(t=>t.payee))].slice(0,5);
+  const defaultSuggestions = PAYEE_SUGGESTIONS[form.category]||[];
+  const allSuggestions = [...new Set([...recentPayees, ...defaultSuggestions])].filter(p=>!form.payee||p.toLowerCase().includes(form.payee.toLowerCase())).slice(0,8);
+
+  const addTransaction=()=>{
+    if(!form.amount||isNaN(parseFloat(form.amount))) return;
+    const amount=parseFloat(form.amount);
+    setTransactions([{id:`t${Date.now()}`,...form,amount},...transactions]);
+    setAccounts(accounts.map(a=>a.id===form.accountId?{...a,balance:form.type==="einnahmen"?a.balance+amount:a.balance-amount}:a));
+    setForm({...form,amount:"",payee:"",note:""});
+    setShowTxModal(false);
+  };
+
+  const deleteTx=id=>{
+    const tx=transactions.find(t=>t.id===id); if(!tx) return;
+    setAccounts(accounts.map(a=>a.id===tx.accountId?{...a,balance:tx.type==="einnahmen"?a.balance-tx.amount:a.balance+tx.amount}:a));
+    setTransactions(transactions.filter(t=>t.id!==id));
+  };
+
+  // Account CRUD
+  const openNewAcc=()=>{ setEditingAcc(null); setAccForm({name:"",balance:"",color:"#3B82F6",icon:"🏦"}); setShowAccModal(true); };
+  const openEditAcc=acc=>{ setEditingAcc(acc); setAccForm({name:acc.name,balance:String(acc.balance),color:acc.color,icon:acc.icon}); setShowAccModal(true); };
+  const saveAccount=()=>{
+    if(!accForm.name) return;
+    if(editingAcc) {
+      setAccounts(accounts.map(a=>a.id===editingAcc.id?{...a,name:accForm.name,color:accForm.color,icon:accForm.icon}:a));
+    } else {
+      if(!accForm.balance) return;
+      setAccounts([...accounts,{id:`acc${Date.now()}`,name:accForm.name,balance:parseFloat(accForm.balance),color:accForm.color,icon:accForm.icon}]);
+    }
+    setShowAccModal(false);
+  };
+  const deleteAccount=accId=>{
+    if(accounts.length<=1){ alert("Mindestens ein Konto muss bestehen bleiben."); return; }
+    setAccounts(accounts.filter(a=>a.id!==accId));
+    setTransactions(transactions.filter(t=>t.accountId!==accId));
+    setShowAccModal(false);
+  };
+
+  const saveBudget=()=>{
+    if(!editingBudget) return;
+    const val=parseFloat(editingBudget.value);
+    if(isNaN(val)||val<0) return;
+    if(val===0){ const next={...budgets}; delete next[editingBudget.catId]; setBudgets(next); }
+    else setBudgets({...budgets,[editingBudget.catId]:val});
+    setEditingBudget(null); setShowBudgetModal(false);
+  };
+
+  const openNewCat=type=>{ setEditingCat({type,cat:null}); setCatForm({label:"",icon:type==="ausgaben"?"🏠":"💰"}); setShowCatModal(true); };
+  const openEditCat=(type,cat)=>{ setEditingCat({type,cat}); setCatForm({label:cat.label,icon:cat.icon}); setShowCatModal(true); };
+  const saveCat=()=>{
+    if(!catForm.label.trim()) return;
+    const type=editingCat.type;
+    if(editingCat.cat) setCategories({...categories,[type]:categories[type].map(c=>c.id===editingCat.cat.id?{...c,label:catForm.label.trim(),icon:catForm.icon}:c)});
+    else { const newId=`cat_${Date.now()}`; setCategories({...categories,[type]:[...(categories[type]||[]),{id:newId,label:catForm.label.trim(),icon:catForm.icon}]}); }
+    setShowCatModal(false);
+  };
+  const deleteCat=(type,catId)=>{
+    setCategories({...categories,[type]:categories[type].filter(c=>c.id!==catId)});
+    if(budgets[catId]){ const b={...budgets}; delete b[catId]; setBudgets(b); }
+    setShowCatModal(false);
+  };
+
+  useEffect(()=>{ if(showTxModal&&amountRef.current) setTimeout(()=>amountRef.current?.focus(),100); },[showTxModal]);
+  useEffect(()=>{ if(showBudgetModal&&budgetRef.current) setTimeout(()=>budgetRef.current?.focus(),150); },[showBudgetModal]);
+
+  const TABS=[
+    {id:"dashboard",label:"Übersicht",emoji:"◉"},
+    {id:"budgets",label:"Budget",emoji:"🎯",badge:overCount},
+    {id:"transactions",label:"Buchungen",emoji:"↕"},
+    {id:"accounts",label:"Konten",emoji:"⊞"},
+    {id:"settings",label:"Einstellungen",emoji:"⚙️"},
+  ];
+
+  // Shared modal wrapper style
+  const modalWrap={ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center" };
+  const modalBox={ background:"#F2F2F7",borderRadius:"24px 24px 0 0",width:"100%",maxWidth:430 };
+  const handle=<div style={{ width:34,height:4,background:"#D1D1D6",borderRadius:2,margin:"10px auto 16px" }} />;
+
+  return (
+    <div style={{ fontFamily:"-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif",background:"#F2F2F7",minHeight:"100vh",maxWidth:430,margin:"0 auto",position:"relative" }}>
+
+      {/* HEADER */}
+      <div style={{ background:"linear-gradient(160deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)",padding:`calc(${safeT} + 18px) 18px 0`,color:"#fff" }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4 }}>
+          <span style={{ fontSize:11,opacity:0.6,fontWeight:700,letterSpacing:1 }}>GESAMTVERMÖGEN</span>
+          <span style={{ fontSize:11,background:"rgba(255,255,255,0.15)",padding:"3px 10px",borderRadius:20,fontWeight:600 }}>{monthLabel}</span>
+        </div>
+        <div style={{ fontSize:38,fontWeight:700,letterSpacing:-1.5,marginBottom:14 }}>{fmt(totalBalance)}</div>
+        <div style={{ display:"flex",gap:7,marginBottom:18 }}>
+          {[{label:"Einnahmen",value:fmt(monthIncome),color:"#34D399"},{label:"Ausgaben",value:fmt(monthExpenses),color:"#F87171"},{label:"Gespart",value:`${savingsRate.toFixed(0)}%`,color:"#60A5FA"}].map(s=>(
+            <div key={s.label} style={{ flex:1,background:"rgba(255,255,255,0.08)",borderRadius:11,padding:"7px 9px" }}>
+              <div style={{ color:s.color,fontSize:13,fontWeight:700 }}>{s.value}</div>
+              <div style={{ color:"rgba(255,255,255,0.45)",fontSize:9,fontWeight:700,marginTop:2,letterSpacing:0.5 }}>{s.label.toUpperCase()}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display:"flex",borderBottom:"1px solid rgba(255,255,255,0.1)",overflowX:"auto" }}>
+          {TABS.map(tab=>(
+            <button key={tab.id} onClick={()=>setActiveTab(tab.id)}
+              style={{ flex:"0 0 auto",background:"none",border:"none",padding:"8px 10px 10px",color:activeTab===tab.id?"#60A5FA":"rgba(255,255,255,0.4)",fontSize:10,fontWeight:700,cursor:"pointer",borderBottom:activeTab===tab.id?"2px solid #60A5FA":"2px solid transparent",position:"relative",whiteSpace:"nowrap" }}>
+              {tab.label}
+              {tab.badge>0&&<span style={{ position:"absolute",top:4,right:1,background:"#EF4444",color:"#fff",borderRadius:"50%",width:13,height:13,fontSize:8,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center" }}>{tab.badge}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* CONTENT */}
+      <div style={{ padding:`14px 14px calc(${safeB} + 85px)` }}>
+
+        {/* DASHBOARD */}
+        {activeTab==="dashboard"&&<div>
+          {(overCount>0||nearCount>0)&&(
+            <div style={{ background:overCount>0?"#FEE2E2":"#FEF3C7",borderRadius:13,padding:"10px 13px",marginBottom:10,borderLeft:`4px solid ${overCount>0?"#EF4444":"#F59E0B"}`,display:"flex",alignItems:"center",gap:9 }}>
+              <span style={{ fontSize:18 }}>{overCount>0?"⚠️":"💡"}</span>
+              <div style={{ flex:1 }}><div style={{ fontWeight:700,fontSize:12,color:overCount>0?"#DC2626":"#D97706" }}>{overCount>0?`${overCount} Kategorie${overCount>1?"n":""} überzogen!`:`${nearCount} fast voll`}</div></div>
+              <button onClick={()=>setActiveTab("budgets")} style={{ background:overCount>0?"#EF4444":"#F59E0B",border:"none",color:"#fff",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>Details</button>
+            </div>
+          )}
+          <div style={{ background:"#fff",borderRadius:16,padding:15,marginBottom:9,boxShadow:"0 2px 10px rgba(0,0,0,0.05)" }}>
+            <div style={{ display:"flex",justifyContent:"space-between",marginBottom:9 }}>
+              <span style={{ fontWeight:700,fontSize:13 }}>Monatsbudget</span>
+              <span style={{ fontSize:12,color:savings>=0?"#10B981":"#EF4444",fontWeight:700 }}>{savings>=0?"+":""}{fmt(savings)}</span>
+            </div>
+            <div style={{ background:"#F2F2F7",borderRadius:7,height:7,overflow:"hidden",marginBottom:5 }}>
+              <div style={{ height:"100%",borderRadius:7,width:`${Math.min((monthExpenses/Math.max(monthIncome,1))*100,100)}%`,background:monthExpenses/monthIncome>0.8?"linear-gradient(90deg,#F59E0B,#EF4444)":"linear-gradient(90deg,#3B82F6,#10B981)" }} />
+            </div>
+            <div style={{ display:"flex",justifyContent:"space-between" }}>
+              <span style={{ fontSize:10,color:"#8E8E93" }}>{fmt(monthExpenses)} ausgegeben</span>
+              <span style={{ fontSize:10,color:"#8E8E93" }}>von {fmt(monthIncome)}</span>
+            </div>
+          </div>
+          <div style={{ background:"#fff",borderRadius:16,padding:15,marginBottom:9,boxShadow:"0 2px 10px rgba(0,0,0,0.05)" }}>
+            <div style={{ fontWeight:700,fontSize:13,marginBottom:11 }}>Top Ausgaben</div>
+            {topCats.length===0&&<div style={{ color:"#8E8E93",fontSize:12,textAlign:"center",padding:"8px 0" }}>Noch keine Ausgaben diesen Monat</div>}
+            {topCats.map(([cat,amount],i)=>{ const info=getCat("ausgaben",cat),pct=monthExpenses>0?(amount/monthExpenses)*100:0,bs=getBudgetStatus(cat); return(
+              <div key={cat} style={{ marginBottom:11 }}>
+                <div style={{ display:"flex",justifyContent:"space-between",marginBottom:4 }}>
+                  <span style={{ fontSize:12,fontWeight:600 }}>{info.icon} {info.label}</span>
+                  <div><span style={{ fontSize:12,fontWeight:700,color:"#EF4444" }}>{fmt(amount)}</span>{bs&&<span style={{ fontSize:9,color:"#8E8E93",marginLeft:3 }}>/ {fmt(bs.limit)}</span>}</div>
+                </div>
+                <div style={{ background:"#F2F2F7",borderRadius:5,height:5 }}><div style={{ height:"100%",borderRadius:5,width:`${pct}%`,background:`hsl(${200+i*30},70%,55%)` }} /></div>
+              </div>
+            ); })}
+          </div>
+          <div style={{ fontWeight:700,fontSize:13,marginBottom:8 }}>Konten</div>
+          {accounts.map(acc=>(
+            <div key={acc.id} onClick={()=>{ setSelectedAccount(acc.id); setActiveTab("transactions"); }}
+              style={{ background:"#fff",borderRadius:13,padding:"11px 14px",marginBottom:7,display:"flex",alignItems:"center",gap:11,boxShadow:"0 2px 7px rgba(0,0,0,0.05)",cursor:"pointer" }}>
+              <div style={{ width:38,height:38,borderRadius:11,background:acc.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:19 }}>{acc.icon}</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:600,fontSize:13 }}>{acc.name}</div>
+                <div style={{ fontSize:10,color:"#8E8E93" }}>{transactions.filter(t=>t.accountId===acc.id).length} Buchungen</div>
+              </div>
+              <div style={{ fontWeight:700,fontSize:14,color:acc.balance>=0?"#1C1C1E":"#EF4444" }}>{fmt(acc.balance)}</div>
+            </div>
+          ))}
+        </div>}
+
+        {/* BUDGETS */}
+        {activeTab==="budgets"&&<div>
+          <div style={{ background:"linear-gradient(135deg,#1e3a5f,#0f3460)",borderRadius:16,padding:16,marginBottom:13,color:"#fff" }}>
+            <div style={{ fontSize:10,opacity:0.6,fontWeight:700,letterSpacing:1,marginBottom:3 }}>GESAMT BUDGETRAHMEN</div>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:11 }}>
+              <div style={{ fontSize:26,fontWeight:700 }}>{fmt(totalBudget)}</div>
+              <div style={{ textAlign:"right" }}>
+                <div style={{ fontSize:10,opacity:0.6 }}>verbraucht</div>
+                <div style={{ fontSize:17,fontWeight:700,color:budgetUsedPct>100?"#F87171":budgetUsedPct>80?"#FCD34D":"#34D399" }}>{fmt(monthExpenses)}</div>
+              </div>
+            </div>
+            <div style={{ background:"rgba(255,255,255,0.15)",borderRadius:5,height:6 }}><div style={{ height:"100%",borderRadius:5,width:`${Math.min(budgetUsedPct,100)}%`,background:budgetUsedPct>100?"#EF4444":budgetUsedPct>80?"#F59E0B":"#10B981" }} /></div>
+            <div style={{ display:"flex",justifyContent:"space-between",marginTop:5 }}>
+              <span style={{ fontSize:10,opacity:0.55 }}>{budgetUsedPct.toFixed(0)}% verbraucht</span>
+              <span style={{ fontSize:10,opacity:0.55 }}>{fmt(Math.max(totalBudget-monthExpenses,0))} frei</span>
+            </div>
+          </div>
+          <div style={{ display:"flex",gap:7,marginBottom:13 }}>
+            {[{label:"Im Budget",count:(categories.ausgaben||[]).filter(c=>{ const s=getBudgetStatus(c.id); return !s||s.pct<80; }).length,color:"#059669",bg:"#D1FAE5"},{label:"Fast voll",count:nearCount,color:"#D97706",bg:"#FEF3C7"},{label:"Überzogen",count:overCount,color:"#DC2626",bg:"#FEE2E2"}].map(p=>(
+              <div key={p.label} style={{ flex:1,background:p.bg,borderRadius:11,padding:"8px 5px",textAlign:"center" }}>
+                <div style={{ fontSize:19,fontWeight:800,color:p.color }}>{p.count}</div>
+                <div style={{ fontSize:9,color:p.color,fontWeight:700 }}>{p.label}</div>
+              </div>
+            ))}
+          </div>
+          {(categories.ausgaben||[]).map(cat=>{ const status=getBudgetStatus(cat.id),spent=expByCat[cat.id]||0,hasLimit=!!budgets[cat.id],colors=status?statusColor(status.pct):{bar:"#3B82F6",bg:"#EFF6FF",text:"#3B82F6"}; return(
+            <div key={cat.id} onClick={()=>{ setEditingBudget({catId:cat.id,value:budgets[cat.id]?String(budgets[cat.id]):""}); setShowBudgetModal(true); }}
+              style={{ background:"#fff",borderRadius:15,padding:13,marginBottom:7,boxShadow:"0 2px 7px rgba(0,0,0,0.05)",cursor:"pointer" }}>
+              <div style={{ display:"flex",alignItems:"center",gap:9,marginBottom:hasLimit?9:0 }}>
+                <div style={{ width:38,height:38,borderRadius:11,background:hasLimit?colors.bg:"#F2F2F7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17 }}>{cat.icon}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:600,fontSize:13 }}>{cat.label}</div>
+                  {hasLimit?<div style={{ fontSize:10,color:colors.text,fontWeight:700 }}>{fmt(spent)} von {fmt(budgets[cat.id])}</div>:<div style={{ fontSize:10,color:"#8E8E93" }}>Kein Limit gesetzt</div>}
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  {hasLimit&&status?<div><div style={{ fontSize:12,fontWeight:700,color:colors.text }}>{status.pct.toFixed(0)}%</div><div style={{ fontSize:9,color:status.remaining>=0?"#8E8E93":"#EF4444",fontWeight:700 }}>{status.remaining>=0?`${fmt(status.remaining)} frei`:`${fmt(-status.remaining)} über`}</div></div>:<div style={{ fontSize:11,color:"#3B82F6",fontWeight:700 }}>+ Limit</div>}
+                </div>
+              </div>
+              {hasLimit&&status&&<div>
+                <div style={{ background:"#F2F2F7",borderRadius:5,height:6,overflow:"hidden" }}><div style={{ height:"100%",borderRadius:5,width:`${Math.min(status.pct,100)}%`,background:colors.bar }} /></div>
+                {status.pct>=100&&<div style={{ fontSize:10,color:"#DC2626",fontWeight:700,marginTop:4 }}>⚠️ {fmt(-status.remaining)} überschritten</div>}
+                {status.pct>=80&&status.pct<100&&<div style={{ fontSize:10,color:"#D97706",fontWeight:700,marginTop:4 }}>💡 Noch {fmt(status.remaining)} verfügbar</div>}
+              </div>}
+            </div>
+          ); })}
+        </div>}
+
+        {/* TRANSACTIONS */}
+        {activeTab==="transactions"&&<div>
+          {selectedAccount&&<button onClick={()=>setSelectedAccount(null)} style={{ background:"none",border:"none",color:"#3B82F6",fontSize:13,fontWeight:700,cursor:"pointer",marginBottom:8,padding:0 }}>← Alle Konten</button>}
+          <div style={{ fontWeight:700,fontSize:13,marginBottom:9 }}>{selectedAccount?getAcc(selectedAccount)?.name:"Alle Buchungen"}</div>
+          {filteredTx.length===0&&<div style={{ textAlign:"center",color:"#8E8E93",padding:40 }}>Noch keine Buchungen</div>}
+          {filteredTx.map(tx=>{ const cat=getCat(tx.type,tx.category),acc=getAcc(tx.accountId); return(
+            <div key={tx.id} style={{ background:"#fff",borderRadius:13,padding:"10px 13px",marginBottom:6,display:"flex",alignItems:"center",gap:9,boxShadow:"0 2px 6px rgba(0,0,0,0.04)" }}>
+              <div style={{ width:36,height:36,borderRadius:10,background:tx.type==="einnahmen"?"#D1FAE5":"#FEE2E2",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17 }}>{cat.icon}</div>
+              <div style={{ flex:1,minWidth:0 }}>
+                <div style={{ fontWeight:700,fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{tx.payee||cat.label}</div>
+                <div style={{ fontSize:10,color:"#8E8E93",marginTop:1,display:"flex",gap:5,alignItems:"center" }}>
+                  <span style={{ background:acc?.color+"22",color:acc?.color,borderRadius:5,padding:"1px 6px",fontWeight:700,fontSize:9 }}>{acc?.name}</span>
+                  <span>{cat.icon} {cat.label}</span>
+                  {tx.note&&<span>· {tx.note}</span>}
+                  <span>· {new Date(tx.date+"T00:00:00").toLocaleDateString("de-DE",{day:"2-digit",month:"short"})}</span>
+                </div>
+              </div>
+              <div style={{ display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3 }}>
+                <span style={{ fontWeight:700,fontSize:13,color:tx.type==="einnahmen"?"#10B981":"#EF4444" }}>{tx.type==="einnahmen"?"+":"-"}{fmt(tx.amount)}</span>
+                <button onClick={()=>deleteTx(tx.id)} style={{ background:"none",border:"none",cursor:"pointer",color:"#D1D1D6",fontSize:14,padding:0 }}>✕</button>
+              </div>
+            </div>
+          ); })}
+        </div>}
+
+        {/* ACCOUNTS */}
+        {activeTab==="accounts"&&<div>
+          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11 }}>
+            <div style={{ fontWeight:700,fontSize:13 }}>Meine Konten</div>
+            <button onClick={openNewAcc} style={{ background:"#3B82F6",border:"none",color:"#fff",borderRadius:10,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>+ Konto</button>
+          </div>
+          {accounts.map(acc=>{ const accTx=transactions.filter(t=>t.accountId===acc.id),accInc=accTx.filter(t=>t.type==="einnahmen").reduce((s,t)=>s+t.amount,0),accExp=accTx.filter(t=>t.type==="ausgaben").reduce((s,t)=>s+t.amount,0); return(
+            <div key={acc.id} style={{ background:"#fff",borderRadius:16,padding:15,marginBottom:9,boxShadow:"0 2px 9px rgba(0,0,0,0.05)" }}>
+              <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:11 }}>
+                <div style={{ width:44,height:44,borderRadius:13,background:`linear-gradient(135deg,${acc.color}33,${acc.color}66)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:21 }}>{acc.icon}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700,fontSize:14 }}>{acc.name}</div>
+                  <div style={{ color:"#8E8E93",fontSize:10 }}>{accTx.length} Transaktionen</div>
+                </div>
+                <div style={{ fontWeight:800,fontSize:17,color:acc.balance>=0?"#1C1C1E":"#EF4444",marginRight:8 }}>{fmt(acc.balance)}</div>
+                <button onClick={()=>openEditAcc(acc)} style={{ background:"#F2F2F7",border:"none",borderRadius:9,padding:"6px 10px",fontSize:11,fontWeight:700,color:"#3B82F6",cursor:"pointer",fontFamily:"inherit" }}>✏️</button>
+              </div>
+              <div style={{ display:"flex",gap:7 }}>
+                <div style={{ flex:1,background:"#D1FAE5",borderRadius:9,padding:"8px 11px" }}>
+                  <div style={{ fontSize:9,color:"#059669",fontWeight:700,letterSpacing:0.5 }}>EINNAHMEN</div>
+                  <div style={{ fontWeight:700,color:"#059669",marginTop:2,fontSize:13 }}>{fmt(accInc)}</div>
+                </div>
+                <div style={{ flex:1,background:"#FEE2E2",borderRadius:9,padding:"8px 11px" }}>
+                  <div style={{ fontSize:9,color:"#DC2626",fontWeight:700,letterSpacing:0.5 }}>AUSGABEN</div>
+                  <div style={{ fontWeight:700,color:"#DC2626",marginTop:2,fontSize:13 }}>{fmt(accExp)}</div>
+                </div>
+              </div>
+            </div>
+          ); })}
+        </div>}
+
+        {/* SETTINGS */}
+        {activeTab==="settings"&&<div>
+          <div style={{ fontWeight:700,fontSize:16,marginBottom:14 }}>⚙️ Einstellungen</div>
+          <div style={{ display:"flex",background:"#E5E5EA",borderRadius:12,padding:3,marginBottom:14 }}>
+            {["ausgaben","einnahmen"].map(t=>(
+              <button key={t} onClick={()=>setSettingsSection(t)}
+                style={{ flex:1,border:"none",borderRadius:10,padding:"9px 0",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",background:settingsSection===t?(t==="ausgaben"?"#EF4444":"#10B981"):"transparent",color:settingsSection===t?"#fff":"#8E8E93" }}>
+                {t==="ausgaben"?"Ausgaben":"Einnahmen"}-Kategorien
+              </button>
+            ))}
+          </div>
+          <div style={{ background:"#fff",borderRadius:16,overflow:"hidden",marginBottom:10,boxShadow:"0 2px 9px rgba(0,0,0,0.05)" }}>
+            {(categories[settingsSection]||[]).map((cat,i)=>(
+              <div key={cat.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:i<(categories[settingsSection]||[]).length-1?"1px solid #F2F2F7":"none",cursor:"pointer" }} onClick={()=>openEditCat(settingsSection,cat)}>
+                <div style={{ width:36,height:36,borderRadius:10,background:settingsSection==="ausgaben"?"#FEE2E2":"#D1FAE5",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>{cat.icon}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:600,fontSize:13 }}>{cat.label}</div>
+                  <div style={{ fontSize:10,color:"#8E8E93" }}>{settingsSection==="ausgaben"&&budgets[cat.id]?`Limit: ${fmt(budgets[cat.id])}`:"Kein Limit"}</div>
+                </div>
+                <span style={{ color:"#C7C7CC",fontSize:16 }}>›</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={()=>openNewCat(settingsSection)} style={{ width:"100%",border:"2px dashed #D1D1D6",borderRadius:14,padding:"13px 0",background:"transparent",color:"#3B82F6",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:20 }}>
+            + Neue {settingsSection==="ausgaben"?"Ausgaben":"Einnahmen"}-Kategorie
+          </button>
+          <div style={{ background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 2px 9px rgba(0,0,0,0.05)" }}>
+            <button onClick={()=>{ if(window.confirm("Alle Daten zurücksetzen?")){ localStorage.clear(); window.location.reload(); } }}
+              style={{ width:"100%",border:"none",background:"none",padding:"13px 16px",color:"#EF4444",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left" }}>
+              🗑️ Alle Daten zurücksetzen
+            </button>
+          </div>
+        </div>}
+      </div>
+
+      {/* FAB */}
+      <button onClick={()=>setShowTxModal(true)}
+        style={{ position:"fixed",bottom:`calc(${safeB} + 68px)`,right:"calc(50% - 200px)",width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#3B82F6,#8B5CF6)",border:"none",color:"#fff",fontSize:25,cursor:"pointer",boxShadow:"0 4px 18px rgba(59,130,246,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50 }}>+</button>
+
+      {/* BOTTOM NAV */}
+      <div style={{ position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"rgba(255,255,255,0.95)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(0,0,0,0.08)",paddingTop:7,paddingBottom:`calc(${safeB} + 6px)`,display:"flex",justifyContent:"space-around",zIndex:40 }}>
+        {TABS.map(tab=>(
+          <button key={tab.id} onClick={()=>setActiveTab(tab.id)}
+            style={{ background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"0 8px",color:activeTab===tab.id?"#3B82F6":"#8E8E93",position:"relative" }}>
+            <span style={{ fontSize:17 }}>{tab.emoji}</span>
+            <span style={{ fontSize:8,fontWeight:700 }}>{tab.label}</span>
+            {tab.badge>0&&<span style={{ position:"absolute",top:-1,right:1,background:"#EF4444",color:"#fff",borderRadius:"50%",width:13,height:13,fontSize:8,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center" }}>{tab.badge}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* MODAL: KONTO BEARBEITEN / NEU */}
+      {showAccModal&&(
+        <div style={modalWrap} onClick={e=>e.target===e.currentTarget&&setShowAccModal(false)}>
+          <div style={{ ...modalBox, padding:`0 18px calc(${safeB} + 20px)` }}>
+            {handle}
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14 }}>
+              <div style={{ fontWeight:700,fontSize:17 }}>{editingAcc?"Konto bearbeiten":"Neues Konto"}</div>
+              {editingAcc&&<button onClick={()=>{ if(window.confirm(`"${editingAcc.name}" löschen? Alle Buchungen dieses Kontos werden ebenfalls gelöscht.`)) deleteAccount(editingAcc.id); }}
+                style={{ background:"#FEE2E2",border:"none",color:"#DC2626",borderRadius:9,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>Löschen</button>}
+            </div>
+            <div style={{ background:"#fff",borderRadius:14,padding:"11px 15px",marginBottom:8 }}>
+              <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:4 }}>KONTONAME</div>
+              <input type="text" placeholder="z.B. Tagesgeldkonto" value={accForm.name} onChange={e=>setAccForm({...accForm,name:e.target.value})}
+                style={{ width:"100%",border:"none",outline:"none",fontSize:15,background:"transparent",fontFamily:"inherit",color:"#1C1C1E" }} />
+            </div>
+            {!editingAcc&&<div style={{ background:"#fff",borderRadius:14,padding:"11px 15px",marginBottom:8 }}>
+              <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:4 }}>ANFANGSSALDO (€)</div>
+              <input type="number" inputMode="decimal" placeholder="0.00" value={accForm.balance} onChange={e=>setAccForm({...accForm,balance:e.target.value})}
+                style={{ width:"100%",border:"none",outline:"none",fontSize:20,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#1C1C1E" }} />
+            </div>}
+            <div style={{ background:"#fff",borderRadius:14,padding:"11px 15px",marginBottom:8 }}>
+              <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:7 }}>ICON</div>
+              <div style={{ display:"flex",gap:7 }}>
+                {ACC_ICONS.map(ic=><button key={ic} onClick={()=>setAccForm({...accForm,icon:ic})}
+                  style={{ width:36,height:36,borderRadius:10,border:`2px solid ${accForm.icon===ic?"#3B82F6":"#E5E5EA"}`,background:accForm.icon===ic?"#EFF6FF":"transparent",fontSize:17,cursor:"pointer" }}>{ic}</button>)}
+              </div>
+            </div>
+            <div style={{ background:"#fff",borderRadius:14,padding:"11px 15px",marginBottom:14 }}>
+              <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:7 }}>FARBE</div>
+              <div style={{ display:"flex",gap:7 }}>
+                {COLORS.map(c=><button key={c} onClick={()=>setAccForm({...accForm,color:c})}
+                  style={{ width:26,height:26,borderRadius:"50%",background:c,border:`3px solid ${accForm.color===c?"#1C1C1E":"transparent"}`,cursor:"pointer" }} />)}
+              </div>
+            </div>
+            <button onClick={saveAccount} style={{ width:"100%",border:"none",borderRadius:14,padding:"14px 0",background:"linear-gradient(135deg,#3B82F6,#8B5CF6)",color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>
+              {editingAcc?"Änderungen speichern":"Konto hinzufügen"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: KATEGORIE */}
+      {showCatModal&&editingCat&&(
+        <div style={modalWrap} onClick={e=>e.target===e.currentTarget&&setShowCatModal(false)}>
+          <div style={{ ...modalBox,padding:`0 18px calc(${safeB} + 20px)`,maxHeight:"85vh",overflowY:"auto" }}>
+            {handle}
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14 }}>
+              <div style={{ fontWeight:700,fontSize:17 }}>{editingCat.cat?"Kategorie bearbeiten":"Neue Kategorie"}</div>
+              {editingCat.cat&&<button onClick={()=>{ if(window.confirm(`"${editingCat.cat.label}" löschen?`)) deleteCat(editingCat.type,editingCat.cat.id); }}
+                style={{ background:"#FEE2E2",border:"none",color:"#DC2626",borderRadius:9,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>Löschen</button>}
+            </div>
+            <div style={{ display:"flex",alignItems:"center",gap:13,background:"#fff",borderRadius:14,padding:"13px 15px",marginBottom:10 }}>
+              <div style={{ width:48,height:48,borderRadius:14,background:editingCat.type==="ausgaben"?"#FEE2E2":"#D1FAE5",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0 }}>{catForm.icon}</div>
+              <input type="text" placeholder="Kategoriename" value={catForm.label} onChange={e=>setCatForm({...catForm,label:e.target.value})}
+                style={{ flex:1,border:"none",outline:"none",fontSize:17,fontWeight:700,background:"transparent",fontFamily:"inherit",color:"#1C1C1E" }} />
+            </div>
+            <div style={{ background:"#fff",borderRadius:14,padding:"12px 13px",marginBottom:14 }}>
+              <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:9 }}>ICON WÄHLEN</div>
+              <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>
+                {EMOJI_LIST.map(em=><button key={em} onClick={()=>setCatForm({...catForm,icon:em})}
+                  style={{ width:38,height:38,borderRadius:10,border:`2px solid ${catForm.icon===em?(editingCat.type==="ausgaben"?"#EF4444":"#10B981"):"#E5E5EA"}`,background:catForm.icon===em?(editingCat.type==="ausgaben"?"#FEE2E2":"#D1FAE5"):"transparent",fontSize:19,cursor:"pointer" }}>{em}</button>)}
+              </div>
+            </div>
+            <button onClick={saveCat} style={{ width:"100%",border:"none",borderRadius:14,padding:"14px 0",background:editingCat.type==="ausgaben"?"linear-gradient(135deg,#EF4444,#DC2626)":"linear-gradient(135deg,#10B981,#059669)",color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>
+              {editingCat.cat?"Änderungen speichern":"Kategorie hinzufügen"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: BUDGET */}
+      {showBudgetModal&&editingBudget&&(()=>{ const cat=getCat("ausgaben",editingBudget.catId),status=getBudgetStatus(editingBudget.catId),spent=expByCat[editingBudget.catId]||0; return(
+        <div style={modalWrap} onClick={e=>e.target===e.currentTarget&&setShowBudgetModal(false)}>
+          <div style={{ ...modalBox,padding:`0 18px calc(${safeB} + 20px)` }}>
+            {handle}
+            <div style={{ display:"flex",alignItems:"center",gap:11,marginBottom:14 }}>
+              <div style={{ width:46,height:46,borderRadius:13,background:"#EFF6FF",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22 }}>{cat.icon}</div>
+              <div><div style={{ fontWeight:700,fontSize:16 }}>{cat.label}</div><div style={{ fontSize:11,color:"#8E8E93" }}>Ausgegeben: <span style={{ fontWeight:700,color:"#EF4444" }}>{fmt(spent)}</span></div></div>
+            </div>
+            {status&&<div style={{ background:"#fff",borderRadius:13,padding:13,marginBottom:10 }}>
+              <div style={{ display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,marginBottom:7 }}>
+                <span style={{ color:statusColor(status.pct).text }}>{status.pct.toFixed(0)}% verbraucht</span>
+                <span style={{ color:status.remaining>=0?"#10B981":"#EF4444" }}>{status.remaining>=0?`${fmt(status.remaining)} frei`:`${fmt(-status.remaining)} über`}</span>
+              </div>
+              <div style={{ background:"#F2F2F7",borderRadius:6,height:7 }}><div style={{ height:"100%",borderRadius:6,width:`${Math.min(status.pct,100)}%`,background:statusColor(status.pct).bar }} /></div>
+            </div>}
+            <div style={{ background:"#fff",borderRadius:14,padding:"13px 15px",marginBottom:10 }}>
+              <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:5 }}>MONATLICHES LIMIT</div>
+              <div style={{ display:"flex",alignItems:"center" }}>
+                <span style={{ fontSize:22,fontWeight:300,color:"#8E8E93",marginRight:5 }}>€</span>
+                <input ref={budgetRef} type="number" inputMode="decimal" placeholder="0" value={editingBudget.value} onChange={e=>setEditingBudget({...editingBudget,value:e.target.value})}
+                  style={{ flex:1,border:"none",outline:"none",fontSize:30,fontWeight:700,color:"#1C1C1E",background:"transparent",fontFamily:"inherit" }} />
+              </div>
+              <div style={{ fontSize:10,color:"#8E8E93",marginTop:3 }}>Auf 0 setzen um das Limit zu entfernen</div>
+            </div>
+            <div style={{ marginBottom:13 }}>
+              <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:6 }}>SCHNELLAUSWAHL</div>
+              <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
+                {[50,100,150,200,300,500].map(v=><button key={v} onClick={()=>setEditingBudget({...editingBudget,value:String(v)})}
+                  style={{ border:"2px solid",borderRadius:10,padding:"6px 12px",cursor:"pointer",fontFamily:"inherit",borderColor:editingBudget.value===String(v)?"#3B82F6":"#E5E5EA",background:editingBudget.value===String(v)?"#EFF6FF":"#fff",color:editingBudget.value===String(v)?"#3B82F6":"#6B7280",fontWeight:700,fontSize:13 }}>{v} €</button>)}
+              </div>
+            </div>
+            <button onClick={saveBudget} style={{ width:"100%",border:"none",borderRadius:14,padding:"14px 0",background:"linear-gradient(135deg,#3B82F6,#8B5CF6)",color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>Limit speichern</button>
+          </div>
+        </div>
+      ); })()}
+
+      {/* MODAL: NEUE BUCHUNG */}
+      {showTxModal&&(
+        <div style={modalWrap} onClick={e=>e.target===e.currentTarget&&setShowTxModal(false)}>
+          <div style={{ ...modalBox,maxHeight:"92vh",overflowY:"auto",padding:`0 0 calc(${safeB} + 16px)` }}>
+            <div style={{ width:34,height:4,background:"#D1D1D6",borderRadius:2,margin:"10px auto 0" }} />
+            <div style={{ padding:"12px 16px 0" }}>
+              {/* TYPE TOGGLE */}
+              <div style={{ display:"flex",background:"#E5E5EA",borderRadius:12,padding:3,marginBottom:13 }}>
+                {["ausgaben","einnahmen"].map(t=>(
+                  <button key={t} onClick={()=>setForm({...form,type:t,category:t==="ausgaben"?(categories.ausgaben[0]?.id||"sonstiges"):(categories.einnahmen[0]?.id||"gehalt"),payee:""})}
+                    style={{ flex:1,border:"none",borderRadius:10,padding:"8px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:form.type===t?(t==="ausgaben"?"#EF4444":"#10B981"):"transparent",color:form.type===t?"#fff":"#8E8E93" }}>
+                    {t==="ausgaben"?"− Ausgabe":"+ Einnahme"}
+                  </button>
+                ))}
+              </div>
+
+              {/* BUDGET WARNING */}
+              {form.type==="ausgaben"&&form.amount&&!isNaN(parseFloat(form.amount))&&(()=>{
+                const s=getBudgetStatus(form.category); if(!s) return null;
+                const np=((s.spent+parseFloat(form.amount))/s.limit)*100;
+                if(np>=100) return <div style={{ background:"#FEE2E2",borderRadius:10,padding:"8px 12px",marginBottom:9,display:"flex",gap:6,alignItems:"center" }}><span>⚠️</span><span style={{ fontSize:11,color:"#DC2626",fontWeight:700 }}>Budget für {getCat("ausgaben",form.category).label} wird überschritten!</span></div>;
+                if(np>=80) return <div style={{ background:"#FEF3C7",borderRadius:10,padding:"8px 12px",marginBottom:9,display:"flex",gap:6,alignItems:"center" }}><span>💡</span><span style={{ fontSize:11,color:"#D97706",fontWeight:700 }}>Noch {fmt(s.limit-s.spent-parseFloat(form.amount))} im Budget</span></div>;
+                return null;
+              })()}
+
+              {/* BETRAG */}
+              <div style={{ background:"#fff",borderRadius:14,padding:"13px 16px",marginBottom:9 }}>
+                <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:5 }}>BETRAG</div>
+                <div style={{ display:"flex",alignItems:"center" }}>
+                  <span style={{ fontSize:24,fontWeight:300,color:"#8E8E93",marginRight:5 }}>€</span>
+                  <input ref={amountRef} type="number" inputMode="decimal" placeholder="0,00" value={form.amount}
+                    onChange={e=>setForm({...form,amount:e.target.value})}
+                    style={{ flex:1,border:"none",outline:"none",fontSize:32,fontWeight:700,color:form.type==="ausgaben"?"#EF4444":"#10B981",background:"transparent",width:"100%",fontFamily:"inherit" }} />
+                </div>
+              </div>
+
+              {/* ZAHLUNGSEMPFÄNGER / -SENDER */}
+              <div style={{ background:"#fff",borderRadius:14,padding:"11px 15px",marginBottom:9 }}>
+                <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:5 }}>
+                  {form.type==="ausgaben"?"ZAHLUNGSEMPFÄNGER":"ZAHLUNGSSENDER"}
+                </div>
+                <input ref={payeeRef} type="text"
+                  placeholder={form.type==="ausgaben"?"z.B. Lidl, Aldi, Apotheke…":"z.B. Arbeitgeber, Rente…"}
+                  value={form.payee} onChange={e=>setForm({...form,payee:e.target.value})}
+                  style={{ width:"100%",border:"none",outline:"none",fontSize:16,fontWeight:600,background:"transparent",fontFamily:"inherit",color:"#1C1C1E" }} />
+                {/* Suggestions */}
+                {allSuggestions.length>0&&(
+                  <div style={{ marginTop:8,display:"flex",flexWrap:"wrap",gap:3 }}>
+                    {allSuggestions.map(s=>(
+                      <button key={s} className="suggestion-chip" onClick={()=>setForm({...form,payee:s})}>{s}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* NOTIZ */}
+              <div style={{ background:"#fff",borderRadius:14,padding:"11px 15px",marginBottom:9 }}>
+                <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:4 }}>NOTIZ (optional)</div>
+                <input type="text" placeholder="z.B. Wocheneinkauf..." value={form.note}
+                  onChange={e=>setForm({...form,note:e.target.value})}
+                  style={{ width:"100%",border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#1C1C1E" }} />
+              </div>
+
+              {/* KONTO */}
+              <div style={{ background:"#fff",borderRadius:14,padding:"11px 15px",marginBottom:9 }}>
+                <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:7 }}>KONTO</div>
+                <div style={{ display:"flex",gap:6,overflowX:"auto",paddingBottom:3 }}>
+                  {accounts.map(acc=>(
+                    <button key={acc.id} onClick={()=>setForm({...form,accountId:acc.id})}
+                      style={{ border:"2px solid",flexShrink:0,borderRadius:11,padding:"5px 11px",cursor:"pointer",fontFamily:"inherit",borderColor:form.accountId===acc.id?acc.color:"#E5E5EA",background:form.accountId===acc.id?acc.color+"22":"transparent",color:form.accountId===acc.id?acc.color:"#8E8E93",fontWeight:700,fontSize:11 }}>
+                      {acc.icon} {acc.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* KATEGORIE */}
+              <div style={{ background:"#fff",borderRadius:14,padding:"11px 15px",marginBottom:9 }}>
+                <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:7 }}>KATEGORIE</div>
+                <div style={{ display:"flex",flexWrap:"wrap",gap:5 }}>
+                  {(categories[form.type]||[]).map(cat=>{ const s=form.type==="ausgaben"?getBudgetStatus(cat.id):null,isOver=s&&s.pct>=100,isNear=s&&s.pct>=80&&s.pct<100; return(
+                    <button key={cat.id} onClick={()=>setForm({...form,category:cat.id,payee:""})}
+                      style={{ border:"2px solid",borderRadius:10,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",borderColor:form.category===cat.id?"#3B82F6":isOver?"#EF4444":isNear?"#F59E0B":"#E5E5EA",background:form.category===cat.id?"#EFF6FF":isOver?"#FEE2E2":isNear?"#FEF3C7":"transparent",color:form.category===cat.id?"#3B82F6":isOver?"#DC2626":isNear?"#D97706":"#6B7280",fontWeight:700,fontSize:11 }}>
+                      {cat.icon} {cat.label}{isOver?" ⚠️":isNear?" !":""}
+                    </button>
+                  ); })}
+                </div>
+              </div>
+
+              {/* DATUM */}
+              <div style={{ background:"#fff",borderRadius:14,padding:"11px 15px",marginBottom:14 }}>
+                <div style={{ fontSize:10,color:"#8E8E93",fontWeight:700,letterSpacing:0.5,marginBottom:4 }}>DATUM</div>
+                <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}
+                  style={{ border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#1C1C1E",width:"100%" }} />
+              </div>
+
+              <button onClick={addTransaction}
+                style={{ width:"100%",border:"none",borderRadius:14,padding:"14px 0",background:form.type==="ausgaben"?"linear-gradient(135deg,#EF4444,#DC2626)":"linear-gradient(135deg,#10B981,#059669)",color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>
+                {form.type==="ausgaben"?"Ausgabe erfassen":"Einnahme erfassen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
