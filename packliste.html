@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Packliste" />
+  <meta name="theme-color" content="#1a1a2e" />
+  <title>Fahrradtour Packliste</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; background: #F2F2F7; overscroll-behavior: none; color: #1c1c1e; padding-bottom: 80px; }
+    input, button { font-family: inherit; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+const DEFAULT_LIST = [
+  { cat: "Fahrrad & Reparatur", icon: "🚲", items: [
+    "Fahrrad (Bremsen, Kette, Reifendruck geprüft)",
+    "2× Ersatzschlauch",
+    "Flickzeug & Reifenheber",
+    "Multitool mit Inbus/Kettennieter",
+    "Mini-Luftpumpe oder CO₂-Kartuschen",
+    "Kettenöl (klein)",
+    "Kabelbinder & Panzertape",
+    "Ersatz-Schaltauge",
+    "Fahrradschloss",
+  ]},
+  { cat: "Gepäck & Transport", icon: "🎒", items: [
+    "Satteltaschen / Lenkertasche",
+    "Wasserdichte Packsäcke",
+    "Regenüberzüge für Taschen",
+  ]},
+  { cat: "Kleidung", icon: "👕", items: [
+    "2–3 Radhosen (mit Sitzpolster)",
+    "2–3 Funktions-/Radtrikots",
+    "Windjacke",
+    "Regenjacke",
+    "Regenhose / Überzieher",
+    "Lange Radhose oder Beinlinge",
+    "Arm-/Knielinge",
+    "Radhandschuhe",
+    "Radschuhe + leichte Schuhe für abends",
+    "3 Paar Radsocken",
+    "Unterwäsche & T-Shirt für abends",
+    "Leichte lange Hose fürs Abendprogramm",
+    "Buff / Halstuch",
+    "Mütze / Stirnband",
+  ]},
+  { cat: "Sicherheit & Navigation", icon: "🧭", items: [
+    "Helm",
+    "Radbrille (klar + getönt)",
+    "Vorder- und Rücklicht (geladen)",
+    "Reflektoren / Warnweste",
+    "GPS oder Handyhalterung + Powerbank",
+    "Karte / Route offline",
+    "Klingel",
+  ]},
+  { cat: "Verpflegung", icon: "🍌", items: [
+    "2 Trinkflaschen (≥1,5 l gesamt)",
+    "Elektrolyt-Tabletten / Iso-Pulver",
+    "Energieriegel / Gels",
+    "Bananen, Nüsse, Traubenzucker",
+    "Notfall-Sandwich",
+  ]},
+  { cat: "Hygiene & Erste Hilfe", icon: "🩹", items: [
+    "Erste-Hilfe-Set (Pflaster, Blasenpflaster, Schmerzmittel)",
+    "Sonnencreme LSF 30+",
+    "Lippenpflege",
+    "Insektenspray",
+    "Sitzcreme / Hirschtalg",
+    "Zahnbürste, Zahnpasta, Deo",
+    "Mikrofaser-Handtuch",
+    "Feuchttücher / Duschgel (klein)",
+  ]},
+  { cat: "Dokumente & Sonstiges", icon: "📄", items: [
+    "Ausweis, Krankenkarte, ADFC-Karte",
+    "Bargeld + EC-/Kreditkarte",
+    "Handy + Ladekabel",
+    "Powerbank (10.000 mAh+)",
+    "Buchungsbestätigungen Unterkunft",
+    "Kleiner Rucksack / Beutel fürs Abendessen",
+  ]},
+];
+
+function load(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } }
+function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+
+function buildInitialState() {
+  const state = {};
+  DEFAULT_LIST.forEach(g => {
+    state[g.cat] = { items: g.items.map(i => ({ text: i, done: false, id: cryptoId() })) };
+  });
+  return state;
+}
+
+function cryptoId() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+function App() {
+  const [groups, setGroups] = useState(() => load("pl_groups", buildInitialState()));
+  const [meta, setMeta] = useState(() => load("pl_meta", { title: "Fahrradtour", distance: 250, days: 3 }));
+  const [collapsed, setCollapsed] = useState(() => load("pl_collapsed", {}));
+  const [newItem, setNewItem] = useState({});
+  const [showReset, setShowReset] = useState(false);
+
+  useEffect(() => save("pl_groups", groups), [groups]);
+  useEffect(() => save("pl_meta", meta), [meta]);
+  useEffect(() => save("pl_collapsed", collapsed), [collapsed]);
+
+  const totals = useMemo(() => {
+    let done = 0, total = 0;
+    Object.values(groups).forEach(g => {
+      total += g.items.length;
+      done += g.items.filter(i => i.done).length;
+    });
+    return { done, total, pct: total ? Math.round((done / total) * 100) : 0 };
+  }, [groups]);
+
+  function toggle(cat, id) {
+    setGroups(g => ({
+      ...g,
+      [cat]: { ...g[cat], items: g[cat].items.map(i => i.id === id ? { ...i, done: !i.done } : i) }
+    }));
+  }
+
+  function removeItem(cat, id) {
+    setGroups(g => ({
+      ...g,
+      [cat]: { ...g[cat], items: g[cat].items.filter(i => i.id !== id) }
+    }));
+  }
+
+  function addItem(cat) {
+    const text = (newItem[cat] || "").trim();
+    if (!text) return;
+    setGroups(g => ({
+      ...g,
+      [cat]: { ...g[cat], items: [...g[cat].items, { text, done: false, id: cryptoId() }] }
+    }));
+    setNewItem(n => ({ ...n, [cat]: "" }));
+  }
+
+  function resetAll() {
+    setGroups(buildInitialState());
+    setShowReset(false);
+  }
+
+  function uncheckAll() {
+    setGroups(g => {
+      const next = {};
+      Object.entries(g).forEach(([k, v]) => {
+        next[k] = { ...v, items: v.items.map(i => ({ ...i, done: false })) };
+      });
+      return next;
+    });
+    setShowReset(false);
+  }
+
+  return (
+    <div style={{ maxWidth: 640, margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{
+        background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
+        color: "#fff",
+        padding: "56px 20px 24px",
+        borderBottomLeftRadius: 24,
+        borderBottomRightRadius: 24,
+      }}>
+        <div style={{ fontSize: 13, opacity: 0.7, textTransform: "uppercase", letterSpacing: 1 }}>Packliste</div>
+        <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4 }}>{meta.title}</div>
+        <div style={{ display: "flex", gap: 16, marginTop: 6, fontSize: 14, opacity: 0.85 }}>
+          <span>🚴 {meta.distance} km</span>
+          <span>📅 {meta.days} Tage</span>
+        </div>
+
+        {/* Progress */}
+        <div style={{ marginTop: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+            <span>{totals.done} / {totals.total} gepackt</span>
+            <span>{totals.pct}%</span>
+          </div>
+          <div style={{ height: 8, background: "rgba(255,255,255,0.15)", borderRadius: 4, overflow: "hidden" }}>
+            <div style={{
+              width: `${totals.pct}%`,
+              height: "100%",
+              background: totals.pct === 100 ? "#10B981" : "#3B82F6",
+              transition: "width 0.3s ease"
+            }} />
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button onClick={() => setShowReset(true)} style={hdrBtn}>Zurücksetzen</button>
+        </div>
+      </div>
+
+      {/* Kategorien */}
+      <div style={{ padding: 16 }}>
+        {DEFAULT_LIST.map(g => {
+          const grp = groups[g.cat] || { items: [] };
+          const done = grp.items.filter(i => i.done).length;
+          const isCollapsed = collapsed[g.cat];
+          return (
+            <div key={g.cat} style={card}>
+              <div
+                onClick={() => setCollapsed(c => ({ ...c, [g.cat]: !c[g.cat] }))}
+                style={{ display: "flex", alignItems: "center", padding: "14px 16px", cursor: "pointer" }}
+              >
+                <div style={{ fontSize: 24, marginRight: 12 }}>{g.icon}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 16 }}>{g.cat}</div>
+                  <div style={{ fontSize: 12, color: "#8e8e93", marginTop: 2 }}>{done} / {grp.items.length}</div>
+                </div>
+                <div style={{ fontSize: 18, color: "#c7c7cc", transform: isCollapsed ? "rotate(-90deg)" : "none", transition: "transform 0.2s" }}>⌄</div>
+              </div>
+
+              {!isCollapsed && (
+                <div style={{ borderTop: "1px solid #F2F2F7" }}>
+                  {grp.items.map(i => (
+                    <div key={i.id} style={{ display: "flex", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #F2F2F7" }}>
+                      <div
+                        onClick={() => toggle(g.cat, i.id)}
+                        style={{
+                          width: 24, height: 24, borderRadius: 12,
+                          border: i.done ? "none" : "1.5px solid #c7c7cc",
+                          background: i.done ? "#10B981" : "transparent",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          color: "#fff", fontSize: 14, marginRight: 12, flexShrink: 0,
+                          cursor: "pointer"
+                        }}
+                      >
+                        {i.done ? "✓" : ""}
+                      </div>
+                      <div
+                        onClick={() => toggle(g.cat, i.id)}
+                        style={{
+                          flex: 1, fontSize: 15,
+                          textDecoration: i.done ? "line-through" : "none",
+                          color: i.done ? "#8e8e93" : "#1c1c1e",
+                          cursor: "pointer"
+                        }}
+                      >
+                        {i.text}
+                      </div>
+                      <button
+                        onClick={() => removeItem(g.cat, i.id)}
+                        style={{ background: "none", border: "none", color: "#c7c7cc", fontSize: 18, padding: 4, cursor: "pointer" }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  <div style={{ display: "flex", padding: "10px 12px", gap: 6 }}>
+                    <input
+                      value={newItem[g.cat] || ""}
+                      onChange={e => setNewItem(n => ({ ...n, [g.cat]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === "Enter") addItem(g.cat); }}
+                      placeholder="Eigenen Punkt hinzufügen…"
+                      style={{
+                        flex: 1, padding: "8px 12px", border: "1px solid #E5E5EA",
+                        borderRadius: 8, fontSize: 14, outline: "none", background: "#F2F2F7"
+                      }}
+                    />
+                    <button
+                      onClick={() => addItem(g.cat)}
+                      style={{
+                        padding: "8px 14px", background: "#3B82F6", color: "#fff",
+                        border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer"
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        <div style={{ textAlign: "center", color: "#8e8e93", fontSize: 12, marginTop: 24, paddingBottom: 40 }}>
+          Gute Fahrt! 🚴‍♂️💨
+        </div>
+      </div>
+
+      {/* Reset-Dialog */}
+      {showReset && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100
+        }} onClick={() => setShowReset(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: "#fff", width: "100%", maxWidth: 640,
+            borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20
+          }}>
+            <div style={{ width: 40, height: 4, background: "#E5E5EA", borderRadius: 2, margin: "0 auto 16px" }} />
+            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>Liste zurücksetzen</div>
+            <div style={{ fontSize: 14, color: "#8e8e93", marginBottom: 20 }}>Was möchtest du zurücksetzen?</div>
+            <button onClick={uncheckAll} style={sheetBtn}>Nur Häkchen entfernen</button>
+            <button onClick={resetAll} style={{ ...sheetBtn, color: "#EF4444" }}>Alles auf Standard zurücksetzen</button>
+            <button onClick={() => setShowReset(false)} style={{ ...sheetBtn, marginTop: 8, background: "#F2F2F7" }}>Abbrechen</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const card = {
+  background: "#fff",
+  borderRadius: 14,
+  marginBottom: 12,
+  overflow: "hidden",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.04)"
+};
+
+const hdrBtn = {
+  background: "rgba(255,255,255,0.15)",
+  color: "#fff",
+  border: "1px solid rgba(255,255,255,0.2)",
+  padding: "8px 14px",
+  borderRadius: 8,
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: "pointer"
+};
+
+const sheetBtn = {
+  display: "block",
+  width: "100%",
+  padding: "14px",
+  background: "#fff",
+  border: "1px solid #E5E5EA",
+  borderRadius: 12,
+  fontSize: 16,
+  fontWeight: 600,
+  color: "#3B82F6",
+  marginBottom: 8,
+  cursor: "pointer"
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
