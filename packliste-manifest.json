@@ -1,0 +1,25 @@
+{
+  "name": "Fahrradtour Packliste",
+  "short_name": "Packliste",
+  "description": "Packliste für die Fahrradtour",
+  "start_url": "packliste.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "packliste-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "packliste-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

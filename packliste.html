@@ -7,6 +7,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Packliste" />
   <meta name="theme-color" content="#1a1a2e" />
+  <link rel="manifest" href="packliste-manifest.json" />
+  <link rel="apple-touch-icon" href="packliste-icon-180.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="packliste-icon-192.png" />
   <title>Fahrradtour Packliste</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -350,6 +353,13 @@ const sheetBtn = {
 };
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('packliste-sw.js').catch(err => console.warn('SW registration failed', err));
+    });
+  }
 </script>
 </body>
 </html>
